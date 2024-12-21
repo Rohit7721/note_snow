@@ -1,0 +1,197 @@
+-- Paraquet is a semi-structured file format maintained by majority of big-data companies reason being Apache-Paraquet is an open-source file_format where data in this file is 
+   internally in stored in columnar way thus supporting compression(that means single column values are stored at one_place/one_data_page, having repetition of values gets better compression) and 
+   whenever queried data for selected columns, with this kind of storage all the columns data in each row is not read/parsed to give result_of_query..
+   (Ex: select $1,$2,$3 from @External_stage/file_path/file_name.parquet ); showing that only specific/selected columns are read/parsed to give result_of_query.... 
+
+-- If data at the backend is stored in a columnar way, especially for data warehouses having tables with more number of columns, 
+   this way of storing data is beneficial. Advantage of paraquet file_format is, not only at the database within file itself data is stored in columnar way; 
+   getting better data compression and performance as well.. We can get better performance when queried through External_tables in Snowflake having this paraquet file in datalake... 
+   In AWS, we have a service called 'Athena' through which we query the files in datalake(S3); in such scenarios we can get better performance being those files stored in paraquet format...  
+-- Overall, we can say this paraquet file-format is highly compatible with OLAP(data_warehouse/data_warehousing).. Simply, wherever storage is columnar, there is better comaptibility with OLAP...
+
+-- When we directly open file with paraquet format, we cannot read data, which means we cannot make any meaningful information from it this way.. 
+-- As Snowflake supports paraquet file_format, when the file with data stored in paraquet format is loaded_into_Snowflake/queried_from_Snowflake by specifying parquet_file_format in commands, 
+   then we can read it in the form of key-value pairs.. This phenomenon is shown below: 
+
+CREATE DATABASE PARAQUET_DB;
+CREATE SCHEMA SF_SCHEMA;  
+
+-- Similar to JSON files, to store in its native-format, data in paraquet file can be loaded into VARIANT datatype column defined for stage_table in Snowflake.. 
+   In general, for paraquet files to be loaded VARIANT datatype column is strictly not necessary, can be defined optionally(if we wanted to store parquet_file data in that VARIANT datatype column)... 
+
+
+CREATE FILE FORMAT PARQUET_FF TYPE = PARQUET; 
+DESC FILE FORMAT PARQUET_FF; 
+
+SHOW STAGES; 
+
+LIST @EXT_PRQ_STG; 
+
+SELECT * FROM @EXT_PRQ_STG/daily_sales_items_top105.parquet; -- As file_format is not specified at stage-level, result is shown as error...
+
+SELECT * FROM @EXT_PRQ_STG/daily_sales_items_top105.parquet 
+(FILE_FORMAT => PARQUET_FF); -- Result is data shown inside the column $1(in the form of key-valye pairs like JSON object), as we specified named_file_format in this command; 
+                                                          which means specifying file_format in this statement makes Snowflake understand that file-specified is to be read in parquet_format... 
+-- In this format, data will not be present in nested-JSON objects, there is no need of flattening data(system-defined-function flatten is not used here to bring this data into relational-format)... 
+   It can be directly bring into Columns&Rows as shown below:
+
+SELECT 
+
+$1:"__index_level_0__":: int as index_level,
+$1: "cat_id":: varchar as category_id,
+$1: "d":: int as d ,
+$1: "date":: string as date,
+$1:"dept_id":: string as department_id,
+$1:"item_id":: string as item_id,
+$1:"state_id":: string as state_id ,
+$1:"store_id":: string as store_id,
+$1:"value"::  int as value 
+
+FROM @EXT_PRQ_STG  (FILE_FORMAT => PARQUET_FF); 
+
+-- Upon executing the above statement/query, result shows the data in relational-format...  Here we did not used any system-defined-function to bring parquet_format data into relation_format... 
+
+CREATE OR REPLACE TABLE ITEMS_STG 
+( ROWNUMBER INT, INDEX_LEVEL INT, CATEGORY_ID VARCHAR, D INT, DATE STRING, DEPARTMENT_ID STRING, ITEM_ID STRING, STATE_ID STRING, STORE_ID STRING, 
+VALUE INT, Load_date timestamp default TO_TIMESTAMP_NTZ(current_timestamp)  );
+
+SELECT * FROM ITEMS_STG; -- Query produced no results... 
+
+INSERT INTO ITEMS_STG
+SELECT 
+metadata$file_row_number,
+$1: "__index_level_0__":: int,
+$1: "cat_id":: varchar,
+$1: "d":: int,
+$1: "date":: string,
+$1:"dept_id":: string,
+$1:"item_id":: string,
+$1:"state_id":: string,
+$1:"store_id":: string,
+$1:"value"::  int, 
+TO_TIMESTAMP_NTZ(current_timestamp)
+FROM @EXT_PRQ_STG  (FILE_FORMAT => PARQUET_FF); 
+    
+
+SELECT * FROM ITEMS_STG; -- Result showing 2 million rows... 
+
+
+-- As insert(DML) is row-by-row operation and COPY is bulk data loading, COPY command is faster in this case and 
+   this loading into stage_table(ITEMS_STG) is better performed using COPY statement rather inserting this way... 
+Truncate items_stg; 
+SELECT * FROM ITEMS_STG; -- Query produced no results.. Now, data is loadied into stage table in snowflake using COPY statement... 
+
+COPY INTO ITEMS_STG FROM 
+(SELECT 
+metadata$file_row_number,
+$1: "__index_level_0__":: int,
+$1: "cat_id":: varchar,
+$1: "d":: int,
+$1: "date":: string,
+$1:"dept_id":: string,
+$1:"item_id":: string,
+$1:"state_id":: string,
+$1:"store_id":: string,
+$1:"value"::  int, 
+TO_TIMESTAMP_NTZ(current_timestamp)
+FROM @EXT_PRQ_STG  (FILE_FORMAT => PARQUET_FF)); -- Executed Succesfully. 
+
+SELECT * FROM ITEMS_STG; -- Result showing 2 million rows...  
+
+
+-- If we want this paraquet_format data into VARIANT datatype in a table in Snowflake, table is created with VARIANT datatype column and loaded parquet_format file data into it as below: 
+
+
+CREATE TABLE PRQ_TBL_STG (PARQUET_DT_COLUMN VARIANT);
+SELECT * FROM PRQ_TBL_STG; -- QUERY produced no results.. 
+
+COPY INTO PRQ_TBL_STG FROM @EXT_PRQ_STG  FILE_FORMAT = PARQUET_FF; -- Loaded succesfully 
+
+SELECT * FROM PRQ_TBL_STG; --result showing 2 million rows of data in its native format..
+-- Now this data has to be converted to relational-format for further analysis.... 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
