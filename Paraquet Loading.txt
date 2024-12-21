@@ -1,3 +1,5 @@
+PARAQUET LOADING INTO SNOWFLAKE NOTES BY ROHIT LOADED FORM PERSONAL SYSTEM
+
 -- Paraquet is a semi-structured file format maintained by majority of big-data companies reason being Apache-Paraquet is an open-source file_format where data in this file is 
    internally in stored in columnar way thus supporting compression(that means single column values are stored at one_place/one_data_page, having repetition of values gets better compression) and 
    whenever queried data for selected columns, with this kind of storage all the columns data in each row is not read/parsed to give result_of_query..
